@@ -1,0 +1,28 @@
+# Word/Office ?????
+~$*
+
+# ????
+Thumbs.db
+Desktop.ini
+
+# VS Code ????
+.vscode/
+
+# Keil ????
+*.uvguix.*
+*.uvoptx
+DebugConfig/
+
+# Keil ????
+**/MDK-ARM/RTE/
+**/MDK-ARM/IAP_F411/
+*.o
+*.crf
+*.d
+*.dep
+*.axf
+*.lst
+*.lnp
+*.map
+*.htm
+*.bak
