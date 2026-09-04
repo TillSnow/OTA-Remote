@@ -53,13 +53,12 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-extern uint8_t boot_in_menu_flag;
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
 
 /* USER CODE BEGIN Private defines */
-
+extern uint8_t boot_in_menu_flag;
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
