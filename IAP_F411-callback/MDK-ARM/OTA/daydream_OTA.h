@@ -5,10 +5,10 @@
 #include "flash_if.h"
 #include "menu.h"
 
-#define CRC_addr        0x08008000      //CRC校验的地址     用的扇区3
-#define A_addr          0x0800C000      //A目前地址         只有16KB  16384
-#define B_addr          0x08010000      //B目前地址(只用作备份)         如果只使用扇区4，有64KB
-#define APP_FLAG        0xf0f0f0f0
+#define BackUp_addr     0x08008000      //CRC校验的地址     用的扇区3
+#define A_addr          0x0800C000      //A目前地址         只有80kb
+#define B_addr          0x08020000      //B目前地址(只用作备份)         如果只使用扇区5，有128KB
+#define APP_FLAG        0xEAB904FE
 #define Buf_Num         128
 #define Upload_IDLE     1
 #define Upload_BUSY     2
@@ -32,7 +32,7 @@ extern AB_BACKUP_t A_Backup;
 extern AB_BACKUP_t B_Backup;
 
 #define BACKUP_LEN  sizeof(AB_BACKUP_t)
-#define N_addr      CRC_addr
+
 
 
 
@@ -82,7 +82,7 @@ void Flash_Write(uint32_t addr,AB_BACKUP_t *p);
  * @param   len:连着擦多少扇区
  * @param   T:传过去的备份区
 */
-void flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T);
+int8_t flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T);
 
 
 
@@ -95,7 +95,7 @@ void flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_B
  * @param   T:传过去的备份区
  * @param   R:接收的的备份区
 */
-void AB_Flash_Transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T,AB_BACKUP_t *R);
+int8_t AB_Flash_Transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T,AB_BACKUP_t *R);
 
 
 

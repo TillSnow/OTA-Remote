@@ -125,6 +125,7 @@ int main(void)
 	//PWM Start
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
 
+	HAL_Delay(5000);
 	//lcd
 	LCD_Init();
 	LCD_Fill(0, 0, LCD_W, LCD_H, BLACK);
@@ -132,8 +133,9 @@ int main(void)
 	LCD_Set_Light(50);
 
 
-  A_Backup = *(AB_BACKUP_t *)CRC_addr;
-  B_Backup = *(AB_BACKUP_t *)(CRC_addr + sizeof(AB_BACKUP_t));
+  A_Backup = *(AB_BACKUP_t *)BackUp_addr;
+  B_Backup = *(AB_BACKUP_t *)(BackUp_addr + sizeof(AB_BACKUP_t));
+
   
   //掉电检测区
   /*=============================================*/
@@ -144,10 +146,18 @@ int main(void)
     APP不能执行
     B->A
     */
-    AB_Flash_Transmit(B_addr,A_addr,3U,1,&B_Backup,&A_Backup);
-
-    //A有了来自B的数据
-    JUMP_TO_Addr();
+    if(AB_Flash_Transmit(B_addr,A_addr,3U,2,&B_Backup,&A_Backup) == 0)
+    {
+      WDOG_Enable();
+      WDOG_Feed();
+      uint32_t crc32 = crc32_bitwise((const uint8_t *)A_addr,A_Backup.len);
+      if(crc32 == B_Backup.CRC32)
+      {
+        //A有了来自B的数据
+        JUMP_TO_Addr();
+      }
+      
+    }
   }
   /*
   有两种情况
@@ -155,16 +165,16 @@ int main(void)
   2、更新版本的时候出错      --------------->因为更新版本代码不会等你                     ------------------------->1、重新更新一次
                                                                                          ------------------------->2、回滚上一个版本                                          
   */
-  if(A_Backup.State >= Upload_BUSY){
+  if(A_Backup.State == Upload_BUSY){
   //接着回滚
-  AB_Flash_Transmit(B_addr,A_addr,3U,1,&B_Backup,&A_Backup);
+  AB_Flash_Transmit(B_addr,A_addr,3U,2,&B_Backup,&A_Backup);
   //不需要跳转，先让B->A,保证后面有可以运行程序，如果是更新版本出错，后面可以按键接着更新
   }
   
   //只有A->B一种错误
   if(B_Backup.State == Upload_BUSY){
     //只需要补充备份，不需要跳转
-    AB_Flash_Transmit(A_addr,B_addr,4U,1,&A_Backup,&B_Backup);
+    AB_Flash_Transmit(A_addr,B_addr,5U,1,&A_Backup,&B_Backup);
   }
   /*=============================================*/
 
@@ -191,7 +201,7 @@ int main(void)
   //跳转区
   /*=================================================*/
   else{
-    AB_BACKUP_t *p = (AB_BACKUP_t *)CRC_addr; 
+    AB_BACKUP_t *p = (AB_BACKUP_t *)BackUp_addr; 
 
     if(p->flag == APP_FLAG){
       //表示已经有了APP
@@ -206,7 +216,7 @@ int main(void)
       //表示后面没有APP，此时又没有APP，又没有进入bootloader
       //显示字符串关机了
       LCD_ShowString(74, LCD_H/2, (uint8_t*)"No App!", WHITE, BLACK, 24, 0);//12*6,16*8,24*12,32*16
-      LCD_ShowString(32, LCD_H/2+48, (uint8_t*)"Please Download", WHITE, BLACK, 24, 0);
+	    LCD_ShowString(32, LCD_H/2+48, (uint8_t*)"Please Download", WHITE, BLACK, 24, 0);
 	    HAL_Delay(1000);
     }
   }
@@ -218,7 +228,7 @@ int main(void)
   while (1){
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
-		printf("run in boot while(1)\r\n");
+    printf("run in boot while(1)\r\n");
     printf("there is no legal APP\r\n");
 		HAL_Delay(500);
 		Power_DisEnable();

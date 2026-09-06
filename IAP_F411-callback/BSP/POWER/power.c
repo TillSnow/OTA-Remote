@@ -81,7 +81,7 @@ float BatCheck_8times()
 uint8_t PowerCalculate()
 {
 	uint8_t power;
-	float voltage;
+	double voltage;
 	voltage = BatCheck_8times();
 	
 	if(ChargeCheck())

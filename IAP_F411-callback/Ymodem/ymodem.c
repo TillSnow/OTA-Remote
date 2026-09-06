@@ -194,7 +194,7 @@ int32_t Ymodem_Receive (uint8_t *buf)
 
                     /* Test the size of the image to be sent */
                     /* Image size is greater than Flash size */
-                    if (size > (USER_FLASH_SIZE + 1))
+                    if (size > 0X14000)
                     {
                       /* End session */
                       Send_Byte(CA);
@@ -202,7 +202,8 @@ int32_t Ymodem_Receive (uint8_t *buf)
                       return -1;
                     }
                     /* erase user application area */
-                    FLASH_If_Erase(APPLICATION_ADDRESS);
+                    FLASH_If_Erase_One_Sector(3U);
+                    FLASH_If_Erase_One_Sector(4U);
                     Send_Byte(ACK);
                     Send_Byte(CRC16);
                   }

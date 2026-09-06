@@ -35,6 +35,7 @@
 #include "menu.h"
 #include "ymodem.h"
 #include "daydream_OTA.h"
+#include "WDOG.h"
 
 
 
@@ -72,6 +73,7 @@ void SerialDownload(void)
 
   A_Backup.State = Upload_BUSY;                                    //应该再找一个地方写进去
   AB_Backup_Flash_Write();
+  FLASH_If_Init();
   A_Backup.len = Ymodem_Receive(&tab_1024[0]);
   
   //成功时返回文件的大小到New_CRC.len
@@ -85,9 +87,8 @@ void SerialDownload(void)
     SerialPutString("-------------------\n");
     // user operation
     A_Backup.State = Upload_IDLE;
-    A_Backup.CRC32 = crc32_bitwise((const uint8_t *)APPLICATION_ADDRESS,A_Backup.len);
+    A_Backup.CRC32 = crc32_bitwise((const uint8_t *)A_addr,A_Backup.len);
     A_Backup.flag = APP_FLAG;
-
     AB_Backup_Flash_Write();
   }
   //如果有问题
@@ -144,7 +145,7 @@ void SerialUpload(void)
 void Main_Menu(void)
 {
   uint8_t key = 0;
-
+  int8_t ret = 0;
   SerialPutString("\r\n======================================================================");
   SerialPutString("\r\n=              (C) COPYRIGHT 2011 STMicroelectronics                 =");
   SerialPutString("\r\n=                                                                    =");
@@ -183,30 +184,47 @@ void Main_Menu(void)
 
     if (key == 0x31){
       //第二次烧录：A更新，B留备份
-      if(A_Backup.CRC32 == B_Backup.CRC32);
+      if(A_Backup.CRC32 == B_Backup.CRC32)SerialPutString("Don't need to update\r");
       //第二次之后：B留A备份，A更新
-      else if(A_Backup.CRC32 != B_Backup.CRC32){
-        B_Backup.State = Upload_BUSY;
-        AB_Backup_Flash_Write();
-        AB_Flash_Transmit(A_addr,B_addr,4U,1,&A_Backup,&B_Backup);
-        B_Backup.State = Upload_IDLE;
-        AB_Backup_Flash_Write();
+      else if(B_Backup.flag == APP_FLAG){
+        if(A_Backup.CRC32 != B_Backup.CRC32){
+          B_Backup.State = Upload_BUSY;
+          AB_Backup_Flash_Write();
+          ret = AB_Flash_Transmit(A_addr,B_addr,5U,1,&A_Backup,&B_Backup);
+          if(ret == 0){
+            B_Backup.State = Upload_IDLE;
+            AB_Backup_Flash_Write();
+            SerialPutString("Backup sucessfull\r");
+          }
+          else if(ret == -1){
+              SerialPutString("len error\r");
+          }
+          else if(ret == -2){
+              SerialPutString("crc error\r");
+          }
+        }
       }
       //这里是对A烧录程序
       SerialDownload();
       //第一次：A更新，A->B(只需要执行一次)
       if(B_Backup.flag != APP_FLAG){
         B_Backup.State = Upload_BUSY;
-        B_Backup.flag = APP_FLAG;
-        //写进去
         AB_Backup_Flash_Write();
-        AB_Flash_Transmit(A_addr,B_addr,4U,1,&A_Backup,&B_Backup);
-        B_Backup.State = Upload_IDLE;
-
-        AB_Backup_Flash_Write();
+        ret = AB_Flash_Transmit(A_addr,B_addr,5U,1,&A_Backup,&B_Backup);
+        if(ret == 0){
+           B_Backup.State = Upload_IDLE;
+           B_Backup.flag = APP_FLAG;
+           AB_Backup_Flash_Write();
+           SerialPutString("Backup sucessfull\r");
+        }
+       else if(ret == -1){
+           SerialPutString("len error\r");
+         }
+       else if(ret == -2){
+           SerialPutString("crc error\r");
+         }
+       }
       }
-
-    }
     else if (key == 0x32)
     {
       /* Upload user application from the Flash */
@@ -216,6 +234,8 @@ void Main_Menu(void)
     else if (key == 0x33) /* execute the new program */
     {
       if(A_Backup.flag == APP_FLAG){
+        WDOG_Enable();
+        WDOG_Feed();
         //表示已经有了APP
         JUMP_TO_Addr();
       }

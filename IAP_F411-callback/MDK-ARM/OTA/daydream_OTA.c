@@ -47,7 +47,7 @@ void JUMP_TO_Addr(void){
 uint32_t crc32_bitwise(const uint8_t *data,size_t length){
     uint32_t crc = 0xffffffff;
     for(size_t i = 0; i < length;i++){
-        crc ^= data[i];
+        crc ^= *(data + i);
         for(int j = 0;j < 8;j++){
             if(crc & 1)
                 crc = (crc >> 1) ^ 0xEDB88320;
@@ -63,7 +63,7 @@ uint32_t crc32_bitwise(const uint8_t *data,size_t length){
  * @brief 赋值AB备份区
 */
 void AB_Backup_Flash_Write(void){
-    uint32_t addr = N_addr;
+    uint32_t addr = BackUp_addr;
     HAL_FLASH_Unlock();
     FLASH_If_Erase_One_Sector(2U);
     FLASH_If_Write(&addr,(uint32_t *)&A_Backup,sizeof(AB_BACKUP_t) / 4);
@@ -79,11 +79,12 @@ void AB_Backup_Flash_Write(void){
  * @param   len:连着擦多少扇区
  * @param   T:传过去的备份区
 */
-void flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T){   
+int8_t flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T){   
     //每次只能传输4个字节
     uint32_t buf[Buf_Num] = {0};
-    uint8_t give_Data;
-    uint8_t Remain;
+    uint8_t give_Data = 0;
+    uint16_t Remain;
+    uint8_t Remain_buf;
     uint32_t temp = Buf_Num;
     uint32_t SectorError;
     //首先写入是有限制的，每次只能写4个字节，但是读没有限制，首先假设有x个字节，缓冲区有512个字节
@@ -98,33 +99,38 @@ void flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_B
     flash_Rx.NbSectors = len;
     flash_Rx.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     //存进数组之后应该擦除要传输的
-    HAL_FLASHEx_Erase(&flash_Rx,&SectorError);
-    while(give_Data--){
-        //将地址里面的数据存储进数组
-        uint16_t i,j = 0;
-        if(give_Data == 1)temp = Remain / 4;
-        for(i = 0;i < temp;i++){
-            buf[i] = *(uint32_t *)(Taddr + j);
-            j += 4;
-        }
-        j = 0;
-        
-        for(i = 0;i < temp;i++){
-            /* Check the parameters */
-            assert_param(IS_FLASH_ADDRESS(Raddr));
-            /* If the previous operation is completed, proceed to program the new data */
-            CLEAR_BIT(FLASH->CR, FLASH_CR_PSIZE);
-            FLASH->CR |= FLASH_PSIZE_WORD;                      //PSIZE--->第8，第9位，设置成了10  传字    ，00：位   01：半节     10：字    11：双字
-            FLASH->CR |= FLASH_CR_PG;                           //PG位---->第一位     0：进制编程   1：使能编程
 
-            *(__IO uint32_t *)(Raddr + j) = buf[i];
-            j += 4;
+    if(HAL_FLASHEx_Erase(&flash_Rx,&SectorError) == HAL_OK)
+    { 
+        while(give_Data--){
+            uint32_t j = 0,i;
+            if(give_Data == 0 && Remain != 0)
+            {
+                if(Remain % 4 > 0)
+                {
+                    temp = Remain / 4;
+                    temp++;
+                } 
+                else temp = Remain / 4; 
+            }
+            //需要干什么----->需要烧录程序---->先读满
+            for(i = 0 ; i < temp;i++){
+                buf[i] = *(uint32_t *)(Taddr + j);
+                j += 4;
+            }
+            j = 0;
+            //读了要干什么----->要写
+            for(i = 0;i < temp;i++){
+                if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,Raddr + j,buf[i]) != HAL_OK)return -2;
+                j += 4;
+            }
+            Taddr += temp * 4;
+            Raddr += temp * 4;
         }
-        Taddr += temp * 4;
-        Raddr += temp * 4;
+        HAL_FLASH_Lock();
+        return 0;
     }
-    //写完关掉
-    HAL_FLASH_Lock();
+    return -1;   //擦除失败
 }
 
 /**
@@ -136,22 +142,29 @@ void flash_transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_B
  * @param   T:传过去的备份区
  * @param   R:接收的的备份区
 */
-void AB_Flash_Transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T,AB_BACKUP_t *R){
+int8_t AB_Flash_Transmit(uint32_t Taddr,uint32_t Raddr,uint8_t erase,uint8_t len,AB_BACKUP_t *T,AB_BACKUP_t *R){
+    uint32_t i = 3;
+    uint32_t temp = 0;
     //首先是清除计数
     BKP_Count_Clear();
     R->State = Upload_BUSY;
     AB_Backup_Flash_Write();
-    while(1){
-        flash_transmit(Taddr,Raddr,erase,len,T);
+    if(T->len > 0x14000 || T->len < 0)return -1;
+    while(i--){
+        if(flash_transmit(Taddr,Raddr,erase,len,T) != 0)return -3;
+        // if(T->len <= 0 || (uint32_t)T->len > 0x4000)break;
         R->len = T->len;
-        uint32_t temp = crc32_bitwise((const uint8_t *)Raddr,R->len);
+        if(R->len > 0x14000 || R->len < 0)break;
+        temp = crc32_bitwise((const uint8_t *)Raddr,R->len);
+
         //算出来了接收方的CRC值，需要让这个值和接收放的进行对比，但是怎样知道传递过来的CRC在哪里
         //可以使用笨方法
         if(T->CRC32 == temp) {
             R->CRC32 = temp;
-            break;
+            R->State = Upload_IDLE;
+            AB_Backup_Flash_Write();
+            return 0;
         }
     }
-    R->State = Upload_IDLE;
-    AB_Backup_Flash_Write();
+    return -2;
 }

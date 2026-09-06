@@ -197,8 +197,7 @@ uint32_t SerialKeyPressed(uint8_t *key)
   else
   {
     return 0;
-  }
-}
+  }}
 
 
 /**
